@@ -1,0 +1,24 @@
+{
+  "name": "dyslexiasteps-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Dyslexia Steps word lists: phonics and sight word lists placed by grade (Pre-K to Grade 3) with the source of each placement, plus lists in German, Spanish, French, Dutch and Brazilian Portuguese. Read-only.",
+  "type": "module",
+  "bin": { "dyslexiasteps-mcp": "dist/stdio.js" },
+  "main": "./dist/server.js",
+  "scripts": {
+    "sync": "node scripts/sync-data.mjs",
+    "build": "npm run sync && tsc",
+    "start": "node dist/stdio.js",
+    "start:http": "node dist/http.js",
+    "test": "npm run build && node scripts/test.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "files": ["dist", "data"],
+  "engines": { "node": ">=18" },
+  "repository": { "type": "git", "url": "git+https://github.com/Dyslexia-Steps/dyslexiasteps-mcp.git" },
+  "homepage": "https://dyslexiasteps.com/word-lists-by-grade",
+  "keywords": ["mcp", "model-context-protocol", "word-lists", "phonics", "sight-words", "dolch", "cvc-words", "dyslexia", "teachers", "reading"],
+  "dependencies": { "@modelcontextprotocol/sdk": "^1.32.1", "zod": "^3.25.0" },
+  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.6.0" },
+  "license": "MIT"
+}
