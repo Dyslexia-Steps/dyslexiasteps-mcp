@@ -21,11 +21,11 @@ export function createServer(): McpServer {
     "list_word_lists",
     {
       title: "List word lists",
-      description: `Lists the available word lists with id, title, language, section, grade range, the source of the grade placement and word count. Filter by language, grade (English lists whose grade range includes it) or section. ${GUIDE}`,
+      description: `Lists word lists as summaries (id, title, language, section, grade range, placement basis code, word count, page URL) without their words; returns { count, note, lists } in dataset order, all matches, no paging. Use this to discover ids, then get_word_list for one list's words; use get_words_for_grade or find_words instead when you want words directly. Filters combine with AND. ${GUIDE}`,
       inputSchema: {
-        language: z.enum(LANGUAGES).optional().describe("en, de, es, fr, nl or pt-br. Omit for all."),
-        grade: z.enum(GRADE_IDS).optional().describe("English lists that cover this grade."),
-        section: z.enum(SECTIONS).optional().describe("cvc, families, sight, digraphs, patterns or wordlist (other languages)."),
+        language: z.enum(LANGUAGES).optional().describe("Language code: en, de, es, fr, nl or pt-br. Omit for all languages."),
+        grade: z.enum(GRADE_IDS).optional().describe("Keep only English lists whose grade range includes this grade; other-language lists have no grade and are excluded. Omit for all grades."),
+        section: z.enum(SECTIONS).optional().describe("cvc, families, sight, digraphs or patterns (English), or wordlist (every other-language list). Omit for all sections."),
       },
       annotations: READ_ONLY,
     },
@@ -41,8 +41,8 @@ export function createServer(): McpServer {
     "get_word_list",
     {
       title: "Get one word list",
-      description: "The full list: every word, its groups (for example -at, -an, -ap families), the grade range, the placement basis, the page URL and the license. Use an id from list_word_lists, e.g. short-a, kindergarten, sh.",
-      inputSchema: { id: z.string().describe("List id, e.g. short-a, kindergarten, vowel-teams, or es:palabras-con-m") },
+      description: "Returns one word list in full: the list summary plus every word, its groups (for example -at, -an, -ap families), placementBasisDetail (null for lists in other languages), license and citation text. Use this when you know the list id from list_word_lists; use get_words_for_grade for words merged across a grade's lists, or find_words to search by letter pattern. An unknown id returns an error that points to list_word_lists.",
+      inputSchema: { id: z.string().describe("Exact list id as returned by list_word_lists (case-sensitive), e.g. short-a, kindergarten, vowel-teams; other-language ids carry a language prefix, e.g. es:palabras-con-m.") },
       annotations: READ_ONLY,
     },
     async ({ id }) => {
@@ -57,11 +57,11 @@ export function createServer(): McpServer {
     "get_words_for_grade",
     {
       title: "Words for a grade",
-      description: `Every different English word from the lists that cover a grade, deduplicated, with the lists each word comes from. Optional section filter (for example only sight words or only cvc). ${GUIDE}`,
+      description: `Returns every different English word from all lists whose grade range includes a grade, deduplicated, each with the ids of the lists it comes from, plus totalDifferentWords and returned. Words come in dataset list order and are cut at limit (no offset or paging). Use this for a grade-wide pool; use get_word_list for one specific list, or find_words to search by letter pattern. ${GUIDE}`,
       inputSchema: {
-        grade: z.enum(GRADE_IDS).describe("pre-k, kindergarten, grade-1, grade-2 or grade-3"),
-        section: z.enum(SECTIONS).optional(),
-        limit: z.number().int().min(1).max(1500).optional().describe("Maximum words to return. Default 300."),
+        grade: z.enum(GRADE_IDS).describe("Required grade: pre-k, kindergarten, grade-1, grade-2 or grade-3."),
+        section: z.enum(SECTIONS).optional().describe("Only lists in this section, e.g. sight or cvc. wordlist (other languages) gives no words here. Omit for all sections."),
+        limit: z.number().int().min(1).max(1500).optional().describe("Maximum words to return, 1 to 1500. Default 300; compare returned with totalDifferentWords to see if the result was cut."),
       },
       annotations: READ_ONLY,
     },
@@ -79,14 +79,14 @@ export function createServer(): McpServer {
     "find_words",
     {
       title: "Find words by pattern",
-      description: "Finds words in the lists that start with, end with or contain a letter pattern, for example 'sh', 'ck', '-ight' or 'ai'. Returns each match with its list, grade range and page. Case-insensitive.",
+      description: "Searches all lists for words matching a letter pattern, for example starts_with 'sh', ends_with 'ck' or contains 'ight'. Patterns are plain case-insensitive substrings (no wildcards) and all given patterns and filters must match (AND). Returns { totalMatches, returned, matches }, each match a word with its language and every list it appears in (id, grade range, page URL), in dataset order and cut at limit (no paging). Use this to search by spelling pattern; use get_words_for_grade for a whole grade's words, or get_word_list for one known list. Calling it with none of contains, starts_with or ends_with returns an error.",
       inputSchema: {
-        contains: z.string().min(1).max(12).optional(),
-        starts_with: z.string().min(1).max(12).optional(),
-        ends_with: z.string().min(1).max(12).optional(),
-        language: z.enum(LANGUAGES).optional(),
-        grade: z.enum(GRADE_IDS).optional().describe("Only English lists covering this grade."),
-        limit: z.number().int().min(1).max(500).optional().describe("Default 60."),
+        contains: z.string().min(1).max(12).optional().describe("Word contains this substring anywhere, e.g. ai or ight. 1 to 12 characters."),
+        starts_with: z.string().min(1).max(12).optional().describe("Word begins with this substring, e.g. sh. 1 to 12 characters."),
+        ends_with: z.string().min(1).max(12).optional().describe("Word ends with this substring, e.g. ck. 1 to 12 characters."),
+        language: z.enum(LANGUAGES).optional().describe("Only lists in this language: en, de, es, fr, nl or pt-br. Omit to search every language."),
+        grade: z.enum(GRADE_IDS).optional().describe("Only English lists whose grade range includes this grade; other languages have no grade, so combining it with a non-en language returns no matches."),
+        limit: z.number().int().min(1).max(500).optional().describe("Maximum matches to return, 1 to 500. Default 60; totalMatches gives the full count."),
       },
       annotations: READ_ONLY,
     },
@@ -116,7 +116,7 @@ export function createServer(): McpServer {
     "get_placement_basis",
     {
       title: "How grades were assigned",
-      description: "Explains the source of each grade placement: Dolch's own grade levels (1936, public domain), the Common Core Foundational Skills item that names the skill, or a typical sequence when no standard names it. Includes the limits.",
+      description: "Returns the full table of grade-placement sources, document-level and not per word: bases (each with kind, code, summary and source URL), the grade ids with labels and typical ages, the limits note and the methodology page. Sources are Dolch's own grade levels (1936, public domain), the Common Core Foundational Skills item that names the skill, or a typical sequence when no standard names it. Placement is per list: match a list's placementBasis code (from list_word_lists or get_word_list) to a code here. Use this to explain why a list sits at a grade; use get_citation instead for license and reuse.",
       inputSchema: {},
       annotations: READ_ONLY,
     },
@@ -127,7 +127,7 @@ export function createServer(): McpServer {
     "get_citation",
     {
       title: "How to cite and reuse the word lists",
-      description: "License (CC BY 4.0 for the compilation; the Dolch words are public domain), the citation text and the CSV and JSON download addresses.",
+      description: "Returns how to cite and reuse the dataset: license (name, URL, note; CC BY 4.0 for the compilation, the Dolch words are public domain), citeAs text, the source page, the data's updated date and the fixed CSV and JSON download URLs on dyslexiasteps.com that hold every list. Use this when someone reuses, prints or redistributes the lists; use get_placement_basis instead to explain how grades were assigned.",
       inputSchema: {},
       annotations: READ_ONLY,
     },
